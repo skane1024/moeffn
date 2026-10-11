@@ -32,19 +32,3 @@ print(np.max(np.abs(data_npu_result1 - data_npu_result2)))
 # print(data_npu_result2)
 # data_npu_result2.tofile("/home/yongkang.shu/NPU_IN_VDSP/mbs_parser/parse_case/moe/moe1/npu_result5.bin")
 # print(np.max(np.abs(data_npu_result1 - data_npu_result2)))
-
-# data_npu_result2 = data[3072*12:3072*14]
-# print(data_npu_result2)
-# data_npu_result2.tofile("/home/yongkang.shu/NPU_IN_VDSP/mbs_parser/parse_case/moe/moe1/npu_result6.bin")
-# print(np.max(np.abs(data_npu_result1 - data_npu_result2)))
-
-# data_npu_result2 = data[3072*14:3072*16]
-# print(data_npu_result2)
-# data_npu_result2.tofile("/home/yongkang.shu/NPU_IN_VDSP/mbs_parser/parse_case/moe/moe1/npu_result7.bin")
-# print(np.max(np.abs(data_npu_result1 - data_npu_result2)))
-
-
-# data_npu_result2 = data[3072*16:3072*18]
-# print(data_npu_result2)
-# data_npu_result2.tofile("/home/yongkang.shu/NPU_IN_VDSP/mbs_parser/parse_case/moe/moe1/npu_result8.bin")
-# print(np.max(np.abs(data_npu_result1 - data_npu_result2)))

@@ -36,6 +36,45 @@ class RandomCalibrationDataReader(CalibrationDataReader):
         self.rng = np.random.default_rng(55)
 
 
+def report_io_data_range(model_path: str, data_reader: CalibrationDataReader, max_samples: int = None):
+    """
+    用校准数据跑一遍原始模型, 统计整体输入/输出的数据范围 (min/max)。
+    max_samples 为 None 时遍历全部校准样本。
+    """
+    import onnxruntime as ort
+
+    so = ort.SessionOptions()
+    so.log_severity_level = 3
+    session = ort.InferenceSession(model_path, so)
+    input_name = session.get_inputs()[0].name
+
+    data_reader.rewind()
+    in_min, in_max = np.inf, -np.inf
+    out_min, out_max = np.inf, -np.inf
+    count = 0
+    while True:
+        if max_samples is not None and count >= max_samples:
+            break
+        feed = data_reader.get_next()
+        if feed is None:
+            break
+        x = feed[input_name]
+        y = session.run(None, feed)[0]
+        in_min = min(in_min, float(x.min()))
+        in_max = max(in_max, float(x.max()))
+        out_min = min(out_min, float(y.min()))
+        out_max = max(out_max, float(y.max()))
+        count += 1
+
+    # 统计会耗尽 reader, 复位后再交给量化校准使用
+    data_reader.rewind()
+
+    print(f"\n整体输入输出数据范围 (基于 {count} 个校准样本):")
+    print(f"  输入 range: [{in_min:.6f}, {in_max:.6f}]")
+    print(f"  输出 range: [{out_min:.6f}, {out_max:.6f}]")
+    return {"input": (in_min, in_max), "output": (out_min, out_max)}
+
+
 def export_quant_params(quantized_model_path: str, output_json_path: str = "quant_params.json"):
     """
     从量后的 ONNX 模型中提取所有量化参数。
@@ -94,11 +133,34 @@ def export_quant_params(quantized_model_path: str, output_json_path: str = "quan
 
     params = {}
 
+    # 图输出名集合: 末端 Q/DQ 对的 DQ 输出即 graph output
+    graph_output_names = {o.name for o in model.graph.output}
+    # tensor 名 -> 消费它的节点
+    consumer = {}
+    for node in model.graph.node:
+        for t in node.input:
+            consumer.setdefault(t, []).append(node)
+
+    def output_key(ql_node):
+        """若 QuantizeLinear 的 Q->DQ 链末端是 graph output, 返回输出名, 否则 None.
+        量化器会把 Conv 输出重命名为 xxx_QuantizeLinear_Input, 直接用该中间名不对,
+        应以 graph output 的名字作为 key。"""
+        for dq in consumer.get(ql_node.output[0], []):
+            if dq.op_type == "DequantizeLinear":
+                for out in dq.output:
+                    if out in graph_output_names:
+                        return out
+        return None
+
     # 1) 激活: 遍历 QuantizeLinear 节点, 记录其输入 tensor
     for node in model.graph.node:
         if node.op_type == "QuantizeLinear":
             key = node.input[0]
-            entry = make_entry(key)
+            # graph 输出用输出名代替量化器生成的中间名
+            out_name = output_key(node)
+            if out_name is not None:
+                key = out_name
+            entry = make_entry(node.input[0])
             if entry is not None:
                 params[key] = entry
 
@@ -120,8 +182,8 @@ def export_quant_params(quantized_model_path: str, output_json_path: str = "quan
 
 
 def main():
-    model_path = "model_1core_opt_w72.onnx"
-    output_path = "model_1core_opt_w72_int8.onnx"
+    model_path = "expert/expert_72.onnx"
+    output_path = "expert/expert_72_qdq.onnx"
 
     model = onnx.load(model_path)
     input_name = model.graph.input[0].name
@@ -130,6 +192,9 @@ def main():
         input_name=input_name, num_samples=5000
     )
 
+    # 量化前统计整体输入/输出数据范围
+    report_io_data_range(model_path, data_reader)
+
     quantize_static(
         model_input=model_path,
         model_output=output_path,
@@ -137,12 +202,12 @@ def main():
         quant_format=QuantFormat.QDQ,  # Q/DQ 格式
         activation_type=QuantType.QInt8,
         weight_type=QuantType.QInt8,
-        calibrate_method=CalibrationMethod.MinMax,
+        calibrate_method=CalibrationMethod.Percentile,
         per_channel=True,
         reduce_range=False,
     )
 
-    export_quant_params(output_path, "quant_params.json")
+    export_quant_params(output_path, "expert/quant_params.json")
 
     original_size = os.path.getsize(model_path) / 1024 / 1024
     quantized_size = os.path.getsize(output_path) / 1024 / 1024

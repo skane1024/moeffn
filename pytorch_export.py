@@ -7,15 +7,13 @@ import torch
 import torch.nn as nn
 from onnx import numpy_helper
 
-# 参考模型（用于加载权重对齐 / 结构对照）
-MODEL_REF_CLEAN = "/home/yongkang.shu/NPU_IN_VDSP/MOE_FFN/model_1core_opt_w72_new_create.onnx"
 
 # 保存新模型的目录
-SAVE_DIR = "/home/yongkang.shu/NPU_IN_VDSP/MOE_FFN"
+SAVE_DIR = "expert"
 
-# ONNX 图输入 / 输出名（与原模型一致）
-INPUT_NAME = "4"
-OUTPUT_NAME = "10"
+# ONNX 图输入 / 输出名
+INPUT_NAME = "input"
+OUTPUT_NAME = "output"
 
 # 中间张量名（与原模型一致，便于量化工具链 / 调试对齐）
 OUT_CONV1 = "conv_1_out"
@@ -26,8 +24,8 @@ OUT_MUL0 = "7"
 OUT_MUL1 = "9"
 
 # Conv 权重 initializer 名（与原模型一致；量化工具会基于该名字生成 *_quantized）
-WEIGHT_NAME_CONV1 = "conv1.weight_DequantizeLinear_Output_DequantizeLinear_Output"
-WEIGHT_NAME_CONV3 = "conv3.weight_DequantizeLinear_Output_DequantizeLinear_Output"
+WEIGHT_NAME_CONV1 = "conv1.weight"
+WEIGHT_NAME_CONV3 = "conv3.weight"
 
 # 随机权重取值范围（仅 --random 模式使用）
 WEIGHT_MIN = -0.04
@@ -249,7 +247,6 @@ def export_onnx(model, save_path, input_shape=(1, 3072, 1, 72)):
         opset_version=OPSET,
         do_constant_folding=False,          # 保持原始算子结构
         keep_initializers_as_inputs=False,  # 常量进 initializer，不当作图输入
-        dynamo=False,                       # 使用 torchscript exporter
     )
 
     # 重命名为原模型的名字，并折叠 slice 常量链
@@ -306,7 +303,7 @@ if __name__ == "__main__":
     # 加 --random 则用均匀分布 [-0.04, 0.03] 重新生成。
     init_random_weights(model, WEIGHT_MIN, WEIGHT_MAX, SEED)
     print("使用均匀分布权重初始化 (rng.uniform(-0.04, 0.03))")
-    
+
 
     save_path = os.path.join(SAVE_DIR, "model_1core_opt_w72_new_pytorch.onnx")
     export_onnx(model, save_path)
