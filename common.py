@@ -44,10 +44,10 @@ def int8_quantize(data, scale=None, zero_point=None, symmetric=True):
     return q, scale, zero_point
 
 
-def to_np128(data, num_tokens):
-    data = data.reshape((num_tokens, N_DIMS))
+def to_np128(data, num_tokens, n_dims):
+    data = data.reshape((num_tokens, n_dims))
     data = data.transpose((1, 0))
-    data = data.reshape(N_DIMS // 128, 128, num_tokens)
+    data = data.reshape(n_dims // 128, 128, num_tokens)
     data = data.transpose(0, 2, 1)
     if data.shape[1] == 1: #for generate golden result, 1 pad to 2
         data = np.pad(data, ((0, 0), (0, 1), (0, 0)), mode="constant", constant_values=0)
